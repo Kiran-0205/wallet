@@ -1,0 +1,8 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      { "hooks": [ { "type": "command",
+        "command": "bash ./scripts/log-prompt.sh codex" } ] }
+    ]
+  }
+}
