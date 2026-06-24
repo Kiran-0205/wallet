@@ -11,6 +11,15 @@
 - **Commit:** <hash>
 -->
 
+## 2026-06-24 — Document Git cleanup process
+- **Agent:** Codex (GPT-5)
+- **Prompt:** Add the Git cleanup process explanation to `docs/DECISIONS.md`.
+- **Did:** Documented the Git logic used after the failed push: create a backup branch, stash unrelated working-tree edits, run `git reset --soft origin/main`, unstage generated/sensitive files, add ignore rules, recommit the cleaned changes, restore the stash, and push.
+- **Why:** The key tradeoff was rewriting only unpushed local history instead of preserving bad commits and adding a later fix. Because the commits had not reached GitHub, rebuilding them locally produced a cleaner public history and prevented `node_modules/`, `.env`, and build output from ever being pushed.
+- **Decision changed:** None.
+- **Mistake & fix:** None.
+- **Commit:** pending
+
 ## 2026-06-24 — Clean unpushed history before GitHub push
 - **Agent:** Codex (GPT-5)
 - **Prompt:** Push to GitHub, then proceed with cleaning the failed push.
