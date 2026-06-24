@@ -18,7 +18,7 @@
 - **Why:** The key tradeoff was rewriting only unpushed local history instead of preserving bad commits and adding a later fix. Because the commits had not reached GitHub, rebuilding them locally produced a cleaner public history and prevented `node_modules/`, `.env`, and build output from ever being pushed.
 - **Decision changed:** None.
 - **Mistake & fix:** None.
-- **Commit:** pending
+- **Commit:** d4bf176
 
 ## 2026-06-24 — Clean unpushed history before GitHub push
 - **Agent:** Codex (GPT-5)
