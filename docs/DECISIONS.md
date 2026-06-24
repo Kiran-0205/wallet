@@ -18,7 +18,7 @@
 - **Why:** The first push failed because the unpushed history contained large generated dependency artifacts and a local environment file. Rewriting the still-local commits is safer than pushing that history and trying to repair it afterward.
 - **Decision changed:** Replaced the earlier unpushed commit stack with a cleaned commit because it had not reached GitHub and included files that should never be versioned.
 - **Mistake & fix:** Initial push attempt failed with an HTTP 400 transport error after Git tried to send large dependency content; fixed by unstaging generated/sensitive paths and adding ignore rules before rebuilding the commit.
-- **Commit:** pending
+- **Commit:** 4761d35
 
 ## 2026-06-24 — Ignore local editor settings
 - **Agent:** Codex (GPT-5)
@@ -26,7 +26,7 @@
 - **Did:** Added `.vscode/` to `.gitignore` and removed the duplicate existing `docs/devlog/prompts.log # optional` line.
 - **Why:** `.vscode/settings.json` is local editor configuration, so ignoring the directory prevents user-specific IDE settings from becoming repository noise. Kept the existing devlog ignore rule but deduplicated it to make the ignore file clearer.
 - **Mistake & fix:** None.
-- **Commit:** 642bb56
+- **Commit:** 4761d35
 
 ## 2026-06-24 — Fix deprecated moduleResolution in tsconfig.json
 - **Agent:** Claude Code (claude-opus-4-8)
@@ -34,7 +34,7 @@
 - **Did:** Changed `moduleResolution` from `"node"` (legacy node10) and `module` from `"CommonJS"` to `"node16"` for both. `tsc --noEmit` passes.
 - **Why:** TS reported `moduleResolution=node10` deprecated (removed in TS 7.0). `node16` is the modern, supported algorithm for a CommonJS Node backend; pairing `module` with it keeps emit as CommonJS (no `"type":"module"` in package.json) while resolving correctly. Chose this over silencing via `ignoreDeprecations` so the fix is durable rather than postponed.
 - **Mistake & fix:** None.
-- **Commit:** pending
+- **Commit:** 4761d35
 
 ## 2026-06-20 — Add test text file
 - **Agent:** Claude Code (claude-opus-4-8)
