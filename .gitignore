@@ -1,2 +1,5 @@
 docs/devlog/prompts.log # optional
-docs/devlog/prompts.log # optional
+.vscode/
+wallet-backend/node_modules/
+wallet-backend/.env
+wallet-backend/dist/
