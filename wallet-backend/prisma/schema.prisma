@@ -6,3 +6,17 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
+
+model User {
+  id      String   @id @default(uuid())
+  email   String   @unique
+  account Account?
+}
+
+model Account {
+  id           String @id @default(uuid())
+  userId       String @unique
+  balanceCents Int    @default(0)
+
+  user User @relation(fields: [userId], references: [id])
+}
