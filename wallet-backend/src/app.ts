@@ -78,48 +78,87 @@ app.get("/accounts/:id/balance", async (req, res) => {
 app.post("/transfer", async (req, res) => {
   const { fromId, toId, amountCents } = req.body;
 
-  const from = await prisma.account.findUnique({
-    where: {
-      id: fromId,
-    },
-  });
-
-  if (!from) {
-    return res.status(404).json({ error: "Sender account not found" });
+  if (!fromId || !toId || !amountCents) {
+    return res.status(400).json({ error: "fromId, toId and amountCents are required" });
   }
 
-  if (from.balanceCents < amountCents) {
-    return res.status(422).json({ error: "Insufficient balance" });
+  if (fromId === toId) {
+    return res.status(400).json({ error: "Cannot transfer to the same account" });
   }
 
-  await prisma.account.update({
-    where: {
-      id: fromId,
-    },
-    data: {
-      balanceCents: {
-        decrement: amountCents,
-      },
-    },
-  });
+  if (!Number.isInteger(amountCents) || amountCents <= 0) {
+    return res.status(400).json({ error: "amountCents must be a positive integer" });
+  }
 
-  await prisma.account.update({
-    where: {
-      id: toId,
-    },
-    data: {
-      balanceCents: {
-        increment: amountCents,
-      },
-    },
-  });
+  try {
+    await prisma.$transaction(async (tx) => {
+      const accounts = await tx.$queryRaw<
+        { id: string; balanceCents: number }[]
+      >`
+        SELECT id, "balanceCents"
+        FROM "Account"
+        WHERE id IN (${fromId}, ${toId})
+        ORDER BY id
+        FOR UPDATE
+      `;
 
-  res.json({
-    message: "Transfer successful",
-    fromId,
-    toId,
-    amountCents,
-  });
+      const from = accounts.find((account) => account.id === fromId);
+      const to = accounts.find((account) => account.id === toId);
+
+      if (!from) {
+        throw new Error("SENDER_NOT_FOUND");
+      }
+
+      if (!to) {
+        throw new Error("RECEIVER_NOT_FOUND");
+      }
+
+      if (from.balanceCents < amountCents) {
+        throw new Error("INSUFFICIENT_BALANCE");
+      }
+
+      await tx.account.update({
+        where: { id: fromId },
+        data: {
+          balanceCents: {
+            decrement: amountCents,
+          },
+        },
+      });
+
+      await tx.account.update({
+        where: { id: toId },
+        data: {
+          balanceCents: {
+            increment: amountCents,
+          },
+        },
+      });
+    });
+
+    return res.json({
+      message: "Transfer successful",
+      fromId,
+      toId,
+      amountCents,
+    });
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.message === "SENDER_NOT_FOUND") {
+        return res.status(404).json({ error: "Sender account not found" });
+      }
+
+      if (error.message === "RECEIVER_NOT_FOUND") {
+        return res.status(404).json({ error: "Receiver account not found" });
+      }
+
+      if (error.message === "INSUFFICIENT_BALANCE") {
+        return res.status(422).json({ error: "Insufficient balance" });
+      }
+    }
+
+    return res.status(500).json({ error: "Transfer failed" });
+  }
 });
 
 app.listen(3000, () => {
