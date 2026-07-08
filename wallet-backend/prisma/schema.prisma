@@ -20,3 +20,13 @@ model Account {
 
   user User @relation(fields: [userId], references: [id])
 }
+
+model IdempotencyKey {
+  id           String   @id @default(uuid())
+  key          String   @unique
+  requestHash  String
+  status       String
+  responseBody Json?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}

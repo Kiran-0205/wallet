@@ -1,9 +1,21 @@
 import express from "express";
 import { prisma } from "./prisma";
+import crypto from "crypto";
 
 const app = express();
 
-app.get("/health", async (_req, res) => {
+function hashTransferRequest(body: {
+  fromId: string;
+  toId: string;
+  amountCents: number;
+}) {
+  return crypto
+    .createHash("sha256")
+    .update(JSON.stringify(body))
+    .digest("hex");
+}
+
+app.get("/", async (_req, res) => {
   try {
     await prisma.$queryRaw`SELECT 1`;
 
@@ -76,49 +88,121 @@ app.get("/accounts/:id/balance", async (req, res) => {
 });
 
 app.post("/transfer", async (req, res) => {
+  const idempotencyKey = req.header("Idempotency-Key");
+
+  if (!idempotencyKey) {
+    return res.status(400).json({
+      error: "Idempotency-Key header is required",
+    });
+  }
+
   const { fromId, toId, amountCents } = req.body;
 
   if (!fromId || !toId || !amountCents) {
-    return res.status(400).json({ error: "fromId, toId and amountCents are required" });
+    return res.status(400).json({
+      error: "fromId, toId and amountCents are required",
+    });
   }
 
   if (fromId === toId) {
-    return res.status(400).json({ error: "Cannot transfer to the same account" });
+    return res.status(400).json({
+      error: "Cannot transfer to the same account",
+    });
   }
 
   if (!Number.isInteger(amountCents) || amountCents <= 0) {
-    return res.status(400).json({ error: "amountCents must be a positive integer" });
+    return res.status(400).json({
+      error: "amountCents must be a positive integer",
+    });
   }
 
+  const requestBody = {
+    fromId,
+    toId,
+    amountCents,
+  };
+
+  const requestHash = hashTransferRequest(requestBody);
+
   try {
-    await prisma.$transaction(async (tx) => {
-      const accounts = await tx.$queryRaw<
+    const result = await prisma.$transaction(async (tx) => {
+      const existingKey = await tx.idempotencyKey.findUnique({
+        where: {
+          key: idempotencyKey,
+        },
+      });
+
+      if (existingKey) {
+        if (existingKey.requestHash !== requestHash) {
+          return {
+            statusCode: 409,
+            body: {
+              error: "Idempotency key reused with different request body",
+            },
+          };
+        }
+
+        if (existingKey.status === "completed") {
+          return {
+            statusCode: 200,
+            body: existingKey.responseBody,
+          };
+        }
+
+        return {
+          statusCode: 409,
+          body: {
+            error: "Request is already being processed",
+          },
+        };
+      }
+
+      await tx.idempotencyKey.create({
+        data: {
+          key: idempotencyKey,
+          requestHash,
+          status: "started",
+        },
+      });
+
+      const fromRows = await tx.$queryRaw<
         { id: string; balanceCents: number }[]
       >`
         SELECT id, "balanceCents"
         FROM "Account"
-        WHERE id IN (${fromId}, ${toId})
-        ORDER BY id
+        WHERE id = ${fromId}
         FOR UPDATE
       `;
 
-      const from = accounts.find((account) => account.id === fromId);
-      const to = accounts.find((account) => account.id === toId);
+      const fromAccount = fromRows[0];
 
-      if (!from) {
-        throw new Error("SENDER_NOT_FOUND");
+      if (!fromAccount) {
+        throw new Error("Sender account not found");
       }
 
-      if (!to) {
-        throw new Error("RECEIVER_NOT_FOUND");
+      const toAccount = await tx.account.findUnique({
+        where: {
+          id: toId,
+        },
+      });
+
+      if (!toAccount) {
+        throw new Error("Receiver account not found");
       }
 
-      if (from.balanceCents < amountCents) {
-        throw new Error("INSUFFICIENT_BALANCE");
+      if (fromAccount.balanceCents < amountCents) {
+        return {
+          statusCode: 422,
+          body: {
+            error: "Insufficient balance",
+          },
+        };
       }
 
       await tx.account.update({
-        where: { id: fromId },
+        where: {
+          id: fromId,
+        },
         data: {
           balanceCents: {
             decrement: amountCents,
@@ -127,37 +211,46 @@ app.post("/transfer", async (req, res) => {
       });
 
       await tx.account.update({
-        where: { id: toId },
+        where: {
+          id: toId,
+        },
         data: {
           balanceCents: {
             increment: amountCents,
           },
         },
       });
+
+      const responseBody = {
+        message: "Transfer successful",
+        fromId,
+        toId,
+        amountCents,
+      };
+
+      await tx.idempotencyKey.update({
+        where: {
+          key: idempotencyKey,
+        },
+        data: {
+          status: "completed",
+          responseBody,
+        },
+      });
+
+      return {
+        statusCode: 200,
+        body: responseBody,
+      };
     });
 
-    return res.json({
-      message: "Transfer successful",
-      fromId,
-      toId,
-      amountCents,
-    });
+    return res.status(result.statusCode).json(result.body);
   } catch (error) {
-    if (error instanceof Error) {
-      if (error.message === "SENDER_NOT_FOUND") {
-        return res.status(404).json({ error: "Sender account not found" });
-      }
+    console.error(error);
 
-      if (error.message === "RECEIVER_NOT_FOUND") {
-        return res.status(404).json({ error: "Receiver account not found" });
-      }
-
-      if (error.message === "INSUFFICIENT_BALANCE") {
-        return res.status(422).json({ error: "Insufficient balance" });
-      }
-    }
-
-    return res.status(500).json({ error: "Transfer failed" });
+    return res.status(500).json({
+      error: "Transfer failed",
+    });
   }
 });
 
