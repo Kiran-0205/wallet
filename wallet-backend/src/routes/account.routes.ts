@@ -1,8 +1,8 @@
 import { Router } from "express";
 
-import { addMoney, getBalance } from "../controllers/account.controller";
+import { fund, getBalance } from "../controllers/account.controller";
 
 export const accountRouter = Router();
 
-accountRouter.post("/accounts/:id/add-money", addMoney);
+accountRouter.post("/accounts/:id/fund", fund);
 accountRouter.get("/accounts/:id/balance", getBalance);

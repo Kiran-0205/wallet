@@ -7,6 +7,11 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum LedgerTransactionType {
+  TRANSFER
+  FUNDING
+}
+
 model User {
   id      String   @id @default(uuid())
   email   String   @unique
@@ -19,6 +24,7 @@ model Account {
   balanceCents Int    @default(0)
 
   user User @relation(fields: [userId], references: [id])
+  ledgerEntries LedgerEntry[]
 }
 
 model IdempotencyKey {
@@ -29,4 +35,25 @@ model IdempotencyKey {
   responseBody Json?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+}
+
+model LedgerTransaction {
+  id        String        @id @default(uuid())
+  type      String
+  createdAt DateTime      @default(now())
+
+  entries   LedgerEntry[]
+}
+
+model LedgerEntry {
+  id            String   @id @default(uuid())
+  transactionId String
+  accountId     String
+  amountCents   Int
+
+  transaction   LedgerTransaction @relation(fields: [transactionId], references: [id], onDelete: Restrict)
+  account       Account     @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  @@index([accountId])
+  @@index([transactionId])
 }
