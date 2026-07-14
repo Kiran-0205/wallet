@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 
 import { prisma } from "../lib/prisma";
-import { LedgerTransactionType } from "@prisma/client";
+import { LedgerTransactionType, Prisma } from "@prisma/client";
 
 type AccountParams = {
   id: string;
@@ -152,34 +152,50 @@ export async function fund(req: Request<AccountParams>, res: Response) {
   }
 }
 
+// transaction can happen after account.balanceCents and _sum in ledgerBalance, so wrapped it inside $transaction
+
 export async function getBalance(req: Request<AccountParams>, res: Response) {
   const { id } = req.params;
 
-  const account = await prisma.account.findUnique({
-    where: {
-      id,
-    },
-  });
+  const result = await prisma.$transaction(
+    async (tx) => {
+      const account = await tx.account.findUnique({
+        where: { id },
+      });
 
-  if (!account) {
-    return res.status(404).json({ error: "Account not found" });
+      if (!account) {
+        return null;
+      }
+
+      const ledgerBalance = await tx.ledgerEntry.aggregate({
+        where: {
+          accountId: id,
+        },
+        _sum: {
+          amountCents: true,
+        },
+      });
+
+      const ledgerBalanceCents =
+        ledgerBalance._sum.amountCents ?? 0;
+
+      return {
+        accountId: id,
+        balanceCents: account.balanceCents,
+        ledgerBalanceCents,
+        matches: account.balanceCents === ledgerBalanceCents,
+      };
+    },
+    {
+      isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+    },
+  );
+
+  if (!result) {
+    return res.status(404).json({
+      error: "Account not found",
+    });
   }
 
-  const ledgerBalance = await prisma.ledgerEntry.aggregate({
-    where: {
-      accountId: id,
-    },
-    _sum: {
-      amountCents: true,
-    },
-  });
-
-  const ledgerBalanceCents = ledgerBalance._sum.amountCents ?? 0;
-
-  return res.json({
-    accountId: id,
-    balanceCents: account.balanceCents,
-    ledgerBalanceCents,
-    matches: account.balanceCents === ledgerBalanceCents,
-  });
+  return res.json(result);
 }
